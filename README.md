@@ -8,6 +8,13 @@
 # 7）打开应用后，可以点击打印预览，查看几何形态或者编辑Gcode
 # 8）开始你的模型设计或打印
 
+## 额外注意 #关于运行环境# ：要在规定python版本下运行，以及装载好math, numpy, os
+## *1 在终端中输入python --version，检查是否是Python 3.12.1
+##    -如果不是Python 3.12.1，就去python官网下载一个
+## *2 确认版本无误后，使用vscode打开该程序， 检查pip是否是最新版本（vscode终端输入）python -m pip install --upgrade pip 或输入 python.exe -m pip install --upgrade pip
+## *3 确认pip版本正确后，终端输入pip install numpy
+
+
 # Workflow:
 # 1. Create a new file in the code runner and copy these codes into it.
 # 2. Click run.
