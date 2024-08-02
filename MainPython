@@ -2,100 +2,177 @@
 # coppy all of those in to your VScode or something and start with 'RUN'.
 # Interact with UI, setting the parameters. After all parameters set, the operating Gcode would be generated to Desk.
 # This programming is suitable for generating the filament net work, and irrating the testment procedures.
+# 这个版本可以实现：任意层任意角度平行走线，自定义大小，快速生成参数组，实现模型快速迭代， 第二次更新 -2024/8/2
 
-import math  # 导入math模块以使用数学函数
-import numpy as np  # 导入numpy模块以使用数组和数值运算功能
-import os  # 导入os模块以进行文件和路径操作
+import math
+import numpy as np
+import os
 
 def generate_semi_circle_points(x0, y0, direction, spacing, num_points, axis='X'):
-    radius = spacing / 2  # 计算半径，等于间距的一半
+    radius = spacing / 2
     if axis == 'X':
-        mid_y = y0 + radius  # 计算Y轴中点
-        angles = np.linspace(-math.pi / 2, math.pi / 2, num_points)  # 生成从-π/2到π/2的角度数组
-        x_points = x0 + direction * radius * np.cos(angles)  # 计算半圆上的X坐标
-        y_points = mid_y + radius * np.sin(angles)  # 计算半圆上的Y坐标
+        mid_y = y0 + radius
+        angles = np.linspace(-math.pi / 2, math.pi / 2, num_points)
+        x_points = x0 + direction * radius * np.cos(angles)
+        y_points = mid_y + radius * np.sin(angles)
     else:
-        mid_x = x0 + radius  # 计算X轴中点
-        angles = np.linspace(-math.pi / 2, math.pi / 2, num_points)  # 生成从-π/2到π/2的角度数组
-        x_points = mid_x + radius * np.sin(angles)  # 计算半圆上的X坐标
-        y_points = y0 + direction * radius * np.cos(angles)  # 计算半圆上的Y坐标
-    return x_points, y_points  # 返回半圆上的点的坐标
+        mid_x = x0 + radius
+        angles = np.linspace(-math.pi / 2, math.pi / 2, num_points)
+        x_points = mid_x + radius * np.sin(angles)
+        y_points = y0 + direction * radius * np.cos(angles)
+    return x_points, y_points
 
 def generate_y_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span):
-    gcode_list = []  # 初始化G-code列表
-    x_left = start_x  # 设置左边的X坐标
-    x_right = start_x + x_span  # 设置右边的X坐标
-    y = start_y  # 初始化Y坐标
-    num_rows = int(y_span / spacing)  # 计算Y方向上的总行数
+    gcode_list = []
+    x_left = start_x
+    x_right = start_x + x_span
+    y = start_y
+    num_rows = int(y_span / spacing)
 
     for i in range(num_rows):
         if i % 2 == 0:
-            new_x = x_right  # 奇数行的目标X坐标
-            direction = 1  # 凸面向右
+            new_x = x_right
+            direction = 1
         else:
-            new_x = x_left  # 偶数行的目标X坐标
-            direction = -1  # 凸面向左
-
-        if gcode_list:  # 树脂使用量计算
-            prev_x, prev_y = gcode_list[-1]['x'], gcode_list[-1]['y']  # 获取上一个点的坐标
-            distance = math.sqrt((new_x - prev_x)**2 + (y - prev_y)**2)  # 计算距离
-            e += distance * resin_param  # 更新挤出量
-
-        gcode = f"G1 X{new_x:.2f} Y{y:.2f} E{e:.4f}"  # 生成G-code命令
-        gcode_list.append({'x': new_x, 'y': y, 'gcode': gcode})  # 添加到G-code列表
-
-        prev_x, prev_y = new_x, y  # 更新上一个点的坐标
-        x_points, y_points = generate_semi_circle_points(new_x, y, direction, spacing, num_semi_circle_points, axis='X')  # 生成半圆上的点
-        for x_point, y_point in zip(x_points, y_points):
-            distance = math.sqrt((x_point - prev_x)**2 + (y_point - prev_y)**2)  # 计算每段的距离
-            e += distance * resin_param  # 更新挤出量
-            gcode = f"G1 X{x_point:.2f} Y{y_point:.2f} E{e:.4f}"  # 生成G-code命令
-            gcode_list.append({'x': x_point, 'y': y_point, 'gcode': gcode})  # 添加到G-code列表
-            prev_x, prev_y = x_point, y_point  # 更新上一个点的坐标
-        y += spacing  # 更新Y坐标
-
-    return [item['gcode'] for item in gcode_list], e  # 返回G-code列表和最终的挤出量
-
-def generate_x_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset):
-    gcode_list = []  # 初始化G-code列表
-    y_left = start_y  # 设置左边的Y坐标
-    y_right = start_y + y_span  # 设置右边的Y坐标
-    x = start_x + offset  # 初始化X坐标，应用相位偏移
-    num_rows = int(x_span / spacing)  # 计算X方向上的总行数
-
-    for i in range(num_rows):
-        if i % 2 == 0:
-            new_y = y_right  # 奇数行的目标Y坐标
-            direction = 1  # 凸面向上
-        else:
-            new_y = y_left  # 偶数行的目标Y坐标
-            direction = -1  # 凸面向下
+            new_x = x_left
+            direction = -1
 
         if gcode_list:
-            prev_x, prev_y = gcode_list[-1]['x'], gcode_list[-1]['y']  # 获取上一个点的坐标
-            distance = math.sqrt((x - prev_x)**2 + (new_y - prev_y)**2)  # 计算距离
-            e += distance * resin_param  # 更新挤出量
+            prev_x, prev_y = gcode_list[-1]['x'], gcode_list[-1]['y']
+            distance = math.sqrt((new_x - prev_x) ** 2 + (y - prev_y) ** 2)
+            e += distance * resin_param
 
-        gcode = f"G1 X{x:.2f} Y{new_y:.2f} E{e:.4f}"  # 生成G-code命令
-        gcode_list.append({'x': x, 'y': new_y, 'gcode': gcode})  # 添加到G-code列表
+        gcode = f"G1 X{new_x:.2f} Y{y:.2f} E{e:.4f}"
+        gcode_list.append({'x': new_x, 'y': y, 'gcode': gcode})
 
-        prev_x, prev_y = x, new_y  # 更新上一个点的坐标
-        x_points, y_points = generate_semi_circle_points(x, new_y, direction, spacing, num_semi_circle_points, axis='Y')  # 生成半圆上的点
+        prev_x, prev_y = new_x, y
+        x_points, y_points = generate_semi_circle_points(new_x, y, direction, spacing, num_semi_circle_points, axis='X')
         for x_point, y_point in zip(x_points, y_points):
-            distance = math.sqrt((x_point - prev_x)**2 + (y_point - prev_y)**2)  # 计算每段的距离
-            e += distance * resin_param  # 更新挤出量
-            gcode = f"G1 X{x_point:.2f} Y{y_point:.2f} E{e:.4f}"  # 生成G-code命令
-            gcode_list.append({'x': x_point, 'y': y_point, 'gcode': gcode})  # 添加到G-code列表
-            prev_x, prev_y = x_point, y_point  # 更新上一个点的坐标
-        x += spacing  # 更新X坐标
+            distance = math.sqrt((x_point - prev_x) ** 2 + (y_point - prev_y) ** 2)
+            e += distance * resin_param
+            gcode = f"G1 X{x_point:.2f} Y{y_point:.2f} E{e:.4f}"
+            gcode_list.append({'x': x_point, 'y': y_point, 'gcode': gcode})
+            prev_x, prev_y = x_point, y_point
+        y += spacing
 
-    return [item['gcode'] for item in gcode_list], e  # 返回G-code列表和最终的挤出量
+    return [item['gcode'] for item in gcode_list], e
+
+def generate_x_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset):
+    gcode_list = []
+    y_left = start_y
+    y_right = start_y + y_span
+    x = start_x + offset
+    num_rows = int(x_span / spacing)
+
+    for i in range(num_rows):
+        if i % 2 == 0:
+            new_y = y_right
+            direction = 1
+        else:
+            new_y = y_left
+            direction = -1
+
+        if gcode_list:
+            prev_x, prev_y = gcode_list[-1]['x'], gcode_list[-1]['y']
+            distance = math.sqrt((x - prev_x) ** 2 + (new_y - prev_y) ** 2)
+            e += distance * resin_param
+
+        gcode = f"G1 X{x:.2f} Y{new_y:.2f} E{e:.4f}"
+        gcode_list.append({'x': x, 'y': new_y, 'gcode': gcode})
+
+        prev_x, prev_y = x, new_y
+        x_points, y_points = generate_semi_circle_points(x, new_y, direction, spacing, num_semi_circle_points, axis='Y')
+        for x_point, y_point in zip(x_points, y_points):
+            distance = math.sqrt((x_point - prev_x) ** 2 + (y_point - prev_y) ** 2)
+            e += distance * resin_param
+            gcode = f"G1 X{x_point:.2f} Y{y_point:.2f} E{e:.4f}"
+            gcode_list.append({'x': x_point, 'y': y_point, 'gcode': gcode})
+            prev_x, prev_y = x_point, y_point
+        x += spacing
+
+    return [item['gcode'] for item in gcode_list], e
+
+def generate_angle_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, degree):
+    gcode_list = []
+    k = np.tan(np.radians(degree))
+
+    if k < 0:
+        num_lines = int((start_y + y_span - k * (start_x + x_span)) / spacing)
+        origin = (start_x, start_y)
+        initial_b = start_y - k * start_x
+    else:
+        num_lines = int(((start_y + y_span - k * start_x) - (start_y - k * (start_x + x_span))) / spacing)
+        origin = (start_x + x_span, start_y)
+        initial_b = start_y - k * (start_x + x_span)
+
+    intersection_points = set()
+    lines = []
+    missed_lines = []
+
+    for n in range(num_lines + 1):
+        b = initial_b + n * spacing
+        line_points = []
+        for x in [start_x, start_x + x_span]:
+            y = k * x + b
+            if start_y <= y <= start_y + y_span:
+                line_points.append((x, y))
+        for y in [start_y, start_y + y_span]:
+            if k != 0:
+                x = (y - b) / k
+                if start_x <= x <= start_x + x_span:
+                    line_points.append((x, y))
+
+        unique_points = []
+        for pt in line_points:
+            if pt not in unique_points:
+                unique_points.append(pt)
+
+        if len(unique_points) == 2:
+            lines.append(unique_points)
+            intersection_points.update(unique_points)
+        else:
+            missed_lines.append((n, b))
+
+    for n, b in missed_lines:
+        if k < 0:
+            if (start_x, start_y + y_span) not in intersection_points:
+                new_b = start_y + y_span - k * start_x
+                new_y = k * (start_x + x_span) + new_b
+                if start_y <= new_y <= start_y + y_span:
+                    lines.append([(start_x, start_y + y_span), (start_x + x_span, new_y)])
+                    intersection_points.add((start_x, start_y + y_span))
+                    intersection_points.add((start_x + x_span, new_y))
+        else:
+            if (start_x + x_span, start_y + y_span) not in intersection_points:
+                new_b = start_y + y_span - k * (start_x + x_span)
+                new_y = k * start_x + new_b
+                if start_y <= new_y <= start_y + y_span:
+                    lines.append([(start_x + x_span, start_y + y_span), (start_x, new_y)])
+                    intersection_points.add((start_x + x_span, start_y + y_span))
+                    intersection_points.add((start_x, new_y))
+
+    sorted_points = [origin]
+    for i, line in enumerate(lines):
+        line.sort(key=lambda p: p[1])
+        if i % 2 == 0:
+            sorted_points.extend(line)
+        else:
+            sorted_points.extend(reversed(line))
+
+    prev_x, prev_y = sorted_points[0]
+    for x, y in sorted_points:
+        distance = math.sqrt((x - prev_x) ** 2 + (y - prev_y) ** 2)
+        e += distance * resin_param
+        gcode = f"G1 X{x:.2f} Y{y:.2f} E{e:.4f}"
+        gcode_list.append(gcode)
+        prev_x, prev_y = x, y
+
+    return gcode_list, e
 
 def generate_gcode(layer_params, num_layers, layer_gap, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset_x):
-    e = 0.0  # 初始挤出量
-    gcode_list = []  # 初始化G-code列表
+    e = 0.0
+    gcode_list = []
 
-    # 在生成的G-code开头添加启动喷嘴的代码
     gcode_list.append("G28 X Y")
     gcode_list.append("G28 Z")
     gcode_list.append("G1 X20 Y60 F600")
@@ -103,85 +180,82 @@ def generate_gcode(layer_params, num_layers, layer_gap, resin_param, num_semi_ci
     gcode_list.append("G92 Z0.2 E0")
     gcode_list.append("G1 E1 F100")
 
-    current_z = 0.2  # 初始层高度为0.2
+    current_z = 0.2
 
     for layer in range(num_layers):
-        params = layer_params[layer]  # 获取当前层的参数
-        spacing = params['spacing']  # 获取间距
-        direction_axis = params['direction']  # 获取移动方向
-        
-        # 在每一层开始之前，添加特定的G-code并空一行，第一层除外
+        params = layer_params[layer]
+        spacing = params['spacing']
+        direction_axis = params['direction']
         if layer > 0:
             gcode_list.append("")
             gcode_list.append(f"G92 E0")
             gcode_list.append(f"G1 Z{current_z:.2f} F100")
             gcode_list.append("G1 E1 F100")
-        current_z += layer_gap  # 更新Z轴高度
+        current_z += layer_gap
 
-        if direction_axis == 'X':
-            if layer % 2 == 0:
-                offset = offset_x  # 偶数层应用相位偏移
-            else:
-                offset = 0  # 奇数层不做相位偏移
-            layer_gcode, e = generate_x_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset)  # 生成X方向的G-code
+        if params.get('angle') is not None:
+            degree = params['angle']
+            layer_gcode, e = generate_angle_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, degree)
         else:
-            layer_gcode, e = generate_y_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span)  # 生成Y方向的G-code
+            if direction_axis == 'X':
+                if layer % 2 == 0:
+                    offset = offset_x
+                else:
+                    offset = 0
+                layer_gcode, e = generate_x_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset)
+            else:
+                layer_gcode, e = generate_y_direction_gcode(e, spacing, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span)
 
-        gcode_list.extend(layer_gcode)  # 添加当前层的G-code到总列表中
+        gcode_list.extend(layer_gcode)
 
-    # 在生成的G-code结尾添加复位喷嘴的代码
     gcode_list.append("G92 E0")
     gcode_list.append("G1 Z100 F200")
     gcode_list.append("M400")
     gcode_list.append("M81")
 
-    return gcode_list  # 返回最终的G-code列表
+    return gcode_list
 
 def main():
-    # 获取用户输入
-    num_layers = int(input("请输入想要生成的层数："))  # 输入生成的层数
-    layer_gap = float(input("请输入每层的间隙："))  # 输入每层的间隙
-    
-    # 获取第一层的参数，包括resin_param和num_semi_circle_points
-    print("\n请输入第1层的参数：")
-    start_x = float(input("请输入起始X坐标："))  # 输入起始X坐标
-    start_y = float(input("请输入起始Y坐标："))  # 输入起始Y坐标
-    direction_axis = input("请输入移动方向（X或Y,第一层PassiveL方向是Y）：").strip().upper()  # 输入移动方向
-    spacing = float(input("请输入每行filament的间隔（例如PL-2mm）："))  # 输入每行filament的间隔
-    resin_param = float(input("请输入树脂参数J（原始参数0.1025）："))  # 输入树脂参数
-    x_span = float(input("请输入X的跨度（通常X比Y大，长方形的底边）："))  # 输入X的跨度
-    y_span = float(input("请输入Y的跨度（长方形的高）："))  # 输入Y的跨度
-    num_semi_circle_points = int(input("请输入圆滑部分的点数（10就可以）："))  # 输入圆滑部分的点数
+    try:
+        num_layers = int(input("请输入想要生成的层数："))
+        layer_gap = float(input("请输入每层的间隙："))
+        resin_param = float(input("请输入树脂参数J（原始参数0.1025）："))
+        start_x = float(input("请输入起始X坐标："))
+        start_y = float(input("请输入起始Y坐标："))
+        x_span = float(input("请输入X的跨度（通常X比Y大，长方形的底边）："))
+        y_span = float(input("请输入Y的跨度（长方形的高）："))
+        num_semi_circle_points = int(input("请输入圆滑部分的点数（10就可以）："))
+        layer_params = []
+        spacing = 0
 
-    layer_params = [{'spacing': spacing, 'direction': direction_axis}]  # 初始化第一层的参数
+        for i in range(num_layers):
+            print(f"\n请输入第{i+1}层的参数：")
+            use_angle = input("是否开启角度打印（Y/N）：").strip().upper() == 'Y'
+            direction_axis = input("请输入移动方向（X或Y）：").strip().upper()
+            if use_angle:
+                degree = float(input("已开启角度模式，请问你想要偏离'direction_axis'多少度？（输入degree，-90°到90°）："))
+                spacing = float(input("请输入每行filament的间隔（例如0.8mm）："))
+                layer_params.append({'spacing': spacing, 'direction': direction_axis, 'angle': degree})
+            else:
+                spacing = float(input("请输入每行filament的间隔（例如0.8mm）："))
+                layer_params.append({'spacing': spacing, 'direction': direction_axis})
 
-    for i in range(1, num_layers):
-        print(f"\n请输入第{i+1}层的参数（除了树脂参数和圆滑部分点数、X和Y的起始坐标与跨度，其余参数可能不同）：")
-        direction_axis = input("请输入移动方向（X或Y，Y是PL平行于长边,X是AL垂直于长边）：").strip().upper()  # 输入移动方向
-        spacing = float(input("请输入每行filament的间隔（例如0.8mm）："))  # 输入每行filament的间隔
-        
-        params = {
-            'spacing': spacing,  # 设置间距
-            'direction': direction_axis  # 设置方向
-        }
-        layer_params.append(params)  # 添加当前层的参数到列表中
+        apply_offset = input("是否对所有X方向的层进行相位偏移？(Y/N): ").strip().upper() == 'Y'
+        offset_x = 0.5 * spacing if apply_offset else 0
 
-    apply_offset = input("是否对所有X方向的层进行相位偏移？(Y/N): ").strip().upper() == 'Y'  # 询问是否进行相位偏移
-    offset_x = 0.5 * spacing if apply_offset else 0  # 根据用户输入设置相位偏移量
+        gcode_list = generate_gcode(layer_params, num_layers, layer_gap, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset_x)
 
-    # 生成G-code
-    gcode_list = generate_gcode(layer_params, num_layers, layer_gap, resin_param, num_semi_circle_points, start_x, start_y, x_span, y_span, offset_x)  # 调用生成G-code函数
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        file_path = os.path.join(desktop_path, "generated_gcode.gcode")
 
-    # 确定桌面路径
-    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")  # 获取桌面路径
-    file_path = os.path.join(desktop_path, "generated_gcode.gcode")  # 设置G-code文件路径
+        with open(file_path, 'w') as file:
+            for gcode in gcode_list:
+                file.write(gcode + "\n")
 
-    # 将G-code保存到文件
-    with open(file_path, 'w') as file:
-        for gcode in gcode_list:
-            file.write(gcode + "\n")  # 写入G-code到文件中
+        print(f"\n生成的G-code已保存到: {file_path}")
 
-    print(f"\n生成的G-code已保存到: {file_path}")  # 输出保存路径
+    except Exception as e:
+        print(f"发生错误：{e}")
 
 if __name__ == "__main__":
-    main()  # 调用主函数
+    main()
